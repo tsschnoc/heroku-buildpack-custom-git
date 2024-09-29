@@ -1,0 +1,4 @@
+#!/bin/bash
+
+echo "Custom Git Buildpack"
+exit 0
