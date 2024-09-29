@@ -1,11 +1,68 @@
 #!/bin/bash
 
+indent() {
+  sed -u 's/^/       /'
+}
+
+echo "-----> Install Git"
+
 BUILD_DIR=$1
 CACHE_DIR=$2
-ENV_DIR=$3
+VENDOR_DIR="$BUILD_DIR/vendor"
+INSTALL_DIR="$VENDOR_DIR/git"
+GIT_VERSION="${GIT_VERSION:-2.38.1}"
+CACHE_FILE="$CACHE_DIR/git-$GIT_VERSION.tar.gz"
 
-echo "-----> Installing Git"
-apt-get update
-apt-get install -y git
+if [ ! -f $CACHE_FILE ]; then
+  # install git
+  GIT_FILE="git-$GIT_VERSION.tar.gz"
+  GIT_DIR="git-$GIT_VERSION"
+  GIT_URL="https://mirrors.edge.kernel.org/pub/software/scm/git/$GIT_FILE"
 
-echo "-----> Git installation complete"
+  echo "-----> Downloading Git from $GIT_URL"
+  wget $GIT_URL -P $BUILD_DIR | indent
+
+  echo "-----> Extracting Git from $BUILD_DIR/$GIT_FILE"
+  if [ ! -f $BUILD_DIR/$GIT_FILE ]; then
+    echo "Error: Unable to download Git" | indent
+    ls $BUILD_DIR | indent
+    exit 1;
+  fi
+  tar xvf $BUILD_DIR/$GIT_FILE | indent
+
+  echo "-----> Building Git"
+  cd $GIT_DIR
+  export CPPFLAGS="-I$INSTALL_DIR/include"
+  export LDFLAGS="-L$INSTALL_DIR/lib"
+  ./configure --prefix=$INSTALL_DIR
+  make && make install
+  cd ..
+  rm -rf $GIT_DIR
+
+  # cache for future deploys
+  echo "-----> Caching Git installation"
+  cd $VENDOR_DIR
+  REL_INSTALL_DIR="git"
+  tar czf $REL_INSTALL_DIR.tar.gz $REL_INSTALL_DIR
+
+  if [ ! -d $CACHE_DIR ]; then
+    mkdir -p $CACHE_DIR
+  fi
+
+  mv $REL_INSTALL_DIR.tar.gz $CACHE_FILE
+
+else
+  # cache exists, extract it
+  echo "-----> Extracting Git $CACHE_FILE => $VENDOR_DIR"
+  mkdir -p $VENDOR_DIR
+  tar xzf $CACHE_FILE -C $VENDOR_DIR
+fi
+
+# update PATH and LD_LIBRARY_PATH
+echo "-----> Updating environment variables"
+PROFILE_PATH="$BUILD_DIR/.profile.d/git.sh"
+ACTUAL_INSTALL_PATH="$HOME/vendor/git"
+mkdir -p $(dirname $PROFILE_PATH)
+echo "export PATH=$ACTUAL_INSTALL_PATH/bin:\$PATH" >> $PROFILE_PATH
+echo "export LD_LIBRARY_PATH=$ACTUAL_INSTALL_PATH/lib:\$LD_LIBRARY_PATH:/usr/local/lib" >> $PROFILE_PATH
+echo "-----> Done updating environment variables. All set for Git."
